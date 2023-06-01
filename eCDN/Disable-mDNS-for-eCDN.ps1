@@ -14,7 +14,10 @@ Without these registry keys (or other applicable configuartions) the browsers wi
 The eCDN domain to add to the registry keys. Default is *.ecdn.microsoft.com
 
 .EXAMPLE
-& '.\disalbe mDNS for eCDN.ps1'
+.\Disable-mDNS-for-eCDN.ps1
+
+.EXAMPLE
+.\Disable-mDNS-for-eCDN.ps1 -eCDN_domain "https://teams.microsoft.com"
 
 .NOTES
 As of June 1st 2023, the domain in this script should be updated to *.ecdn.teams.microsoft.com
