@@ -33,7 +33,7 @@ This script is based on a version by Alexusa75 found here: https://github.com/al
 [cmdletbinding()] param(
     [Parameter(Mandatory=$false, HelpMessage="Specify the eCDN domain to add to the registry keys. Default is *.ecdn.microsoft.com")]
     [string]
-    $eCDN_domain = "*.ecdn.microsoft.com"
+    $eCDN_domain = "*.ecdn.teams.microsoft.com"
 )
 
 $HKLM_SW_Policies_Path = "HKLM:\SOFTWARE\Policies"
