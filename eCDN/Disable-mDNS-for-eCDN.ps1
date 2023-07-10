@@ -3,24 +3,29 @@
 This script configures a Windows computer for Microsoft eCDN.
 
 .DESCRIPTION
-This script adds registry keys to a Windows computer for disabling WebRTC's IP obfuscation behavior solely for the Microsoft eCDN domain on the following browsers:
+This script adds registry keys to a Windows computer for disabling WebRTC's IP obfuscation behavior solely for the Microsoft eCDN domains on the following browsers:
     - Microsoft Edge
     - Google Chrome
     - Mozilla Firefox
 
-Without these registry keys (or other applicable configuartions) the browsers will obfuscate the viewer's IP address which will ultimately prevent the eCDN client from connecting to peers.
+Without these registry keys (or other applicable configurations) the browsers will obfuscate the viewer's IP address which will ultimately prevent the eCDN client from connecting to peers.
 
 .PARAMETER eCDN_domain
-The eCDN domain to add to the registry keys. Default is *.ecdn.microsoft.com
+The eCDN domain to add to the registry keys. Default is *.ecdn.microsoft.com and https://teams.microsoft.com
 
 .EXAMPLE
 .\Disable-mDNS-for-eCDN.ps1
-
+# This will add the default eCDN domains to the relevant registry keys
 .EXAMPLE
 .\Disable-mDNS-for-eCDN.ps1 -eCDN_domain "https://teams.microsoft.com"
 
+.EXAMPLE
+.\Disable-mDNS-for-eCDN.ps1 -Enumerated
+# This will enumerate all eCDN domains in the registry keys instead of using wildcards (*)
+
 .NOTES
-As of June 1st 2023, the domain in this script should be updated to *.ecdn.teams.microsoft.com
+Must be run as an Administrator.
+As of June 1st 2023, the domain in this script was updated from *.ecdn.microsoft.com to *.ecdn.teams.microsoft.com
 By July 1st 2023, the domain migration should be complete and the old domain will be deprecated.
 
 .OUTPUTS
@@ -33,11 +38,43 @@ None
 See more regarding disabling mDNS for Microsoft eCDN here: https://learn.microsoft.com/ecdn/how-to/disable-mdns
 This script is based on a version by Alexusa75 found here: https://github.com/alexusa75/Teams
 #>
-[cmdletbinding()] param(
-    [Parameter(Mandatory=$false, HelpMessage="Specify the eCDN domain to add to the registry keys. Default is *.ecdn.microsoft.com")]
+[cmdletbinding(DefaultParameterSetName="Default")] 
+param(
+    [Parameter(Mandatory=$false, ParameterSetName="Default", HelpMessage="Specify the eCDN domain to add to the registry keys. Default is *.ecdn.teams.microsoft.com and https://teams.microsoft.com")]
     [string]
-    $eCDN_domain = "*.ecdn.teams.microsoft.com"
+    $eCDN_domain,
+    [Parameter(ParameterSetName="Add all", HelpMessage="Enumerate all eCDN domains in the registry keys instead of using a wildcard (*)")]
+    [switch]
+    $Enumerated = $false
 )
+
+if (-not [bool](([System.Security.Principal.WindowsIdentity]::GetCurrent()).groups -match "S-1-5-32-544")) {
+    Write-Host "This script must be run as an Administrator" -ForegroundColor Red
+    return
+}
+
+$all_eCDN_Domains = @{
+    "Default" = @(
+        "*.ecdn.teams.microsoft.com"
+    )
+    "Enumerated" = @(
+        "https://sdk.ecdn.teams.microsoft.com",
+        "https://sdk.msit.ecdn.teams.microsoft.com"
+    )
+    "Constant" = @(
+        "https://teams.microsoft.com"
+    )
+}
+
+$Domains_to_add = switch ($eCDN_domain) {
+    ({-not $eCDN_domain -and -not $Enumerated}) {
+        $all_eCDN_Domains["Default"] + $all_eCDN_Domains["Constant"]
+    }
+    ({$Enumerated}) {
+        $all_eCDN_Domains["Enumerated"] + $all_eCDN_Domains["Constant"]
+    }
+    default { @($eCDN_domain) }
+}
 
 $HKLM_SW_Policies_Path = "HKLM:\SOFTWARE\Policies"
 
@@ -62,11 +99,6 @@ $browser_list = @(
         webRTCkey = "Preferences"
     }
 )
-
-if (-not [bool](([System.Security.Principal.WindowsIdentity]::GetCurrent()).groups -match "S-1-5-32-544")) {
-    Write-Host "This script must be run as an Administrator" -ForegroundColor Red
-    return
-}
 function _create_RegKey_if_not_exists($key_path) {
     $key = Get-Item -Path $key_path -ErrorAction SilentlyContinue
     if (!$key) {
@@ -78,27 +110,37 @@ function _create_RegKey_if_not_exists($key_path) {
     }
 }
 
-function disable-mDNS-for-eCDN ($browser) {
-    $browser_path = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$($browser.executable)" -ErrorAction SilentlyContinue).'(Default)'
-    Write-Host ""
+
+function Add-WebRtcLocalIpsAllowedUrl {
+    param (
+        [Parameter(Mandatory=$true, HelpMessage="URL is required")]
+        [string] $URL,
+
+        [Parameter(Mandatory=$true, HelpMessage="Browser is required")]
+        # [ValidateSet("Microsoft Edge", "Google Chrome", "Mozilla Firefox")]
+        $Browser #= "Microsoft Edge"
+    )
+    Write-Verbose "Adding to $($Browser.name)'s WebRTC Local IPs Allowed URLs list $URL"
+    $browser_path = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$($Browser.executable)" -ErrorAction SilentlyContinue).'(Default)'
     if ($browser_path) {
         $browser_version = (Get-Item -Path $browser_path -ErrorAction SilentlyContinue).VersionInfo
         if ($browser_version) {
-            Write-Host " $($browser.name) v.$($browser_version.FileVersion) found " -BackgroundColor White -foregroundColor Black # at $browser_path" -ForegroundColor Yellow
+            Write-Host " $($Browser.name) v.$($browser_version.FileVersion) found " -ForegroundColor DarkGray # -BackgroundColor White -ForegroundColor Black # at $browser_path" -ForegroundColor Yellow
         }
         else {
-            Write-Host " $($browser.name) purportedly installed but unable to determine version info." -BackgroundColor Red -ForegroundColor White
-            Write-Host "Proceeding with adding registry key(s) to disable mDNS for $($browser.name) Browser" -ForegroundColor Yellow
+            Write-Host " $($Browser.name) purportedly installed but unable to determine version info." -BackgroundColor Red -ForegroundColor White
+            Write-Host "Proceeding with adding registry key(s) to disable mDNS for $($Browser.name) Browser" -ForegroundColor Yellow
         }
 
-        $Browser_Company, $Browser_Name = $browser.name.Split()
+        # create the registry keys if they don't exist
+        $Browser_Company, $Browser_Name = $Browser.name.Split()
         $Company_KeyPath = Join-Path $HKLM_SW_Policies_Path $Browser_Company
         _create_RegKey_if_not_exists $Company_KeyPath
 
         $Browser_KeyPath = Join-Path $Company_KeyPath $Browser_Name
         _create_RegKey_if_not_exists $Browser_KeyPath
 
-        $WebRtcLocalIpsAllowedUrls_KeyPath = Join-Path $Browser_KeyPath $browser.webRTCkey
+        $WebRtcLocalIpsAllowedUrls_KeyPath = Join-Path $Browser_KeyPath $Browser.webRTCkey
         _create_RegKey_if_not_exists $WebRtcLocalIpsAllowedUrls_KeyPath
 
         $WebRtcLocalIpsAllowedUrls  = Get-Item -Path $WebRtcLocalIpsAllowedUrls_KeyPath -ErrorAction SilentlyContinue
@@ -110,7 +152,7 @@ function disable-mDNS-for-eCDN ($browser) {
         foreach ($value_name in $value_names) {
             $value = $WebRtcLocalIpsAllowedUrls.GetValue($value_name)
             Write-Verbose "Found $($WebRtcLocalIpsAllowedUrls.GetValueKind($value_name)) $value_name with value $value"
-            if ($value -eq $eCDN_domain) {
+            if ($value -eq $URL) {
                 Write-Host "eCDN domain already exists in $($WebRtcLocalIpsAllowedUrls.GetValueKind($value_name)) $value_name" -ForegroundColor DarkGreen
                 return
             }
@@ -127,14 +169,14 @@ function disable-mDNS-for-eCDN ($browser) {
                 # check if the value already exists within a list of domains
                 if ($values = $WebRtcLocalIpsAllowedUrls.GetValue($value_name)) {
                     $values = $values.split(",").foreach({$_.trim()})
-                    if ($values -contains $eCDN_domain) {
+                    if ($values -contains $URL) {
                         Write-Host "eCDN domain already exists in $($WebRtcLocalIpsAllowedUrls.GetValueKind($value_name)) $value_name" -ForegroundColor DarkGreen
                         return
                     }
-                    $eCDN_domain = $values + $eCDN_domain -join ", "
+                    $URL = $values + $URL -join ", "
                 }
             }
-            New-ItemProperty -Path $WebRtcLocalIpsAllowedUrls_KeyPath -Name $value_name -PropertyType String -Value $eCDN_domain -ErrorAction Stop -Force | Out-Null
+            New-ItemProperty -Path $WebRtcLocalIpsAllowedUrls_KeyPath -Name $value_name -PropertyType String -Value $URL -ErrorAction Stop -Force | Out-Null
             Write-Verbose "eCDN domain added to $($WebRtcLocalIpsAllowedUrls.GetValueKind($value_name)) $value_name"
             Write-Host "Registry key to disable mDNS for $Browser_Name Browser was created" -ForegroundColor Green
         }
@@ -143,12 +185,16 @@ function disable-mDNS-for-eCDN ($browser) {
         }
     }
     else {
-        Write-Host " $($browser.name) not found" -BackgroundColor DarkGray -foregroundColor Black
+        Write-Host " $($browser.name) not found" -BackgroundColor DarkGray -ForegroundColor Black
         return
     }
 }
 
-
-foreach ($browser in $browser_list) {
-    . disable-mDNS-for-eCDN $browser
+foreach ($domain in $Domains_to_add) {
+    Write-Host "Adding to allowed eCDN domains lists $domain" -ForegroundColor Yellow
+    foreach ($browser in $browser_list) {
+        . Add-WebRtcLocalIpsAllowedUrl -URL $domain -Browser $browser
+        Write-Host ""
+    }
+    Write-Host ""
 }

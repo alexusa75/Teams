@@ -6,7 +6,7 @@
     )
     $UrlToDecode = $UrlToDecode.Trim()
 
-    cls
+    # Clear-Host
     Add-Type -AssemblyName System.Web
 
     $decodedURL = [System.Web.HttpUtility]::UrlDecode($UrlToDecode)
@@ -44,7 +44,9 @@
 }
 
 ## Token request
-$Credential = Get-Credential
+if (-not $Credential) {
+    $Credential = Get-Credential
+}
 $clientId = "12128f48-ec9e-42f0-b203-ea49fb6af367" # This is the build in Teams App Id
 $Scopes = @("https://tags.teams.microsoft.com/.default openid profile offline_access")
 $ReqTokenBody = @{
@@ -83,7 +85,7 @@ $liveEvents = Invoke-WebRequest -UseBasicParsing -Headers $header -Uri $url -Met
 $liveEvents = $liveEvents.Content | ConvertFrom-Json
 
 $AllLiveEvents = $liveEvents.liveEventServiceData | ConvertFrom-Json
-clear
+# Clear-Host
 #$TLE = "ZDIxNjVjMjgtYjdlZC00ZjQ5LThmMWEtOWU1ZmIxMTA4NDdl"
 #$TLE = Read-Host "Please Enter the Live Event ID"
 #clear
@@ -94,7 +96,7 @@ Do{
         If($TLE.Length -ne 48){
             Write-Host "Please enter a valid TLE ID" -ForegroundColor Red -BackgroundColor Yellow
             Start-Sleep -Seconds 1
-            clear
+            # Clear-Host
         }else{break}
     }while ($true)
 
