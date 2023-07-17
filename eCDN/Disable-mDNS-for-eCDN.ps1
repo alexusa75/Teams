@@ -11,7 +11,7 @@ This script adds registry keys to a Windows computer for disabling WebRTC's IP o
 Without these registry keys (or other applicable configurations) the browsers will obfuscate the viewer's IP address which will ultimately prevent the eCDN client from connecting to peers.
 
 .PARAMETER eCDN_domain
-The eCDN domain to add to the registry keys. Default is *.ecdn.microsoft.com and https://teams.microsoft.com
+The eCDN domain to add to the registry keys. Default is *.ecdn.teams.microsoft.com and https://teams.microsoft.com
 
 .EXAMPLE
 .\Disable-mDNS-for-eCDN.ps1
